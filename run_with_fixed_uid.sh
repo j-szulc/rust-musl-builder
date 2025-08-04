@@ -81,6 +81,9 @@ fi
 usermod -aG sudo "$USERNAME" 2>/dev/null || {
     echo "Warning: Failed to add user '$USERNAME' to sudo group" >&2
 }
+usermod -aG root "$USERNAME" 2>/dev/null || {
+    echo "Warning: Failed to add user '$USERNAME' to root group" >&2
+}
 
 echo "Setting ownership permissions..."
 
