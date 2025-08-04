@@ -176,7 +176,7 @@ RUN echo "Building libpq" && \
 # We use the instructions at https://github.com/rust-lang/rustup/issues/2383
 # to install the rustup toolchain as root.
 ENV RUSTUP_HOME=/opt/rust/rustup \
-    PATH=/home/rust/.cargo/bin:/opt/rust/cargo/bin:/usr/local/musl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    PATH=/opt/rust/cargo/bin:/usr/local/musl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # The Rust toolchain to use when building our image.
 # Use the latest stable version:
@@ -233,15 +233,6 @@ RUN env CARGO_HOME=/opt/rust/cargo cargo install -f cargo-deb && \
 # Changed sudoers to pass through the env variables
 # (Used for the run_with_fixed_uid.sh script)
 ADD sudoers /etc/sudoers
-
-# Run all further code as user `rust`, create our working directories, install
-# our config file, and set up our credential helper.
-#
-# You should be able to switch back to `USER root` from another `Dockerfile`
-# using this image if you need to do so.
-RUN mkdir -p /home/rust/libs /home/rust/src /home/rust/.cargo && \
-    ln -s /opt/rust/cargo/config /home/rust/.cargo/config && \
-    git config --global credential.https://github.com.helper ghtoken
 
 ADD run_with_fixed_uid.sh /usr/local/bin/run_with_fixed_uid
 RUN chmod +x /usr/local/bin/run_with_fixed_uid
