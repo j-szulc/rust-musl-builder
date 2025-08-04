@@ -1,2 +1,19 @@
-# Allow group sudo to use `sudo` without a password.
-%sudo   ALL=(ALL:ALL) NOPASSWD:ALL
+#
+# This file MUST be edited with the 'visudo' command as root.
+#
+# Please consider adding local content in /etc/sudoers.d/ instead of
+# directly modifying this file.
+#
+# See the man page for details on how to write a sudoers file.
+#
+
+#####
+# Changed sudoers to pass through the env variables
+# (Used for the run_with_fixed_uid.sh script)
+# DELETED:
+# Defaults	env_reset
+# Defaults	mail_badpass
+# Defaults	secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+
+root	ALL=(ALL:ALL) ALL
+%sudo	ALL=(ALL:ALL) NOPASSWD:ALL

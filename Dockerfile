@@ -1,15 +1,6 @@
-# Use Ubuntu 18.04 LTS as our base image.
+# Based on https://github.com/emk/rust-musl-builder
+
 FROM ubuntu:18.04
-
-# The Rust toolchain to use when building our image.  Set by `hooks/build`.
-ARG TOOLCHAIN=stable
-
-# The OpenSSL version to use. Here is the place to check for new releases:
-#
-# - https://www.openssl.org/source/
-#
-# ALSO UPDATE hooks/build!
-ARG OPENSSL_VERSION=1.1.1m
 
 # Versions for other dependencies. Here are the places to check for new
 # releases:
@@ -22,22 +13,28 @@ ARG OPENSSL_VERSION=1.1.1m
 # - http://zlib.net/
 # - https://ftp.postgresql.org/pub/source/
 #
-# We're stuck on PostgreSQL 11 until we figure out
-# https://github.com/emk/rust-musl-builder/issues.
-ARG MDBOOK_VERSION=0.4.14
-ARG MDBOOK_GRAPHVIZ_VERSION=0.1.3
-ARG CARGO_ABOUT_VERSION=0.4.4
-ARG CARGO_AUDIT_VERSION=0.16.0
-ARG CARGO_DENY_VERSION=0.11.0
-ARG ZLIB_VERSION=1.2.11
-ARG POSTGRESQL_VERSION=11.14
+# Arguments for the versions of the dependencies have been scattered throughout the Dockerfile
+# to make better use of the build cache.
+# The args are:
+# - MDBOOK_VERSION
+# - MDBOOK_GRAPHVIZ_VERSION
+# - CARGO_ABOUT_VERSION
+# - CARGO_AUDIT_VERSION
+# - CARGO_DENY_VERSION
+# - POSTGRESQL_VERSION
+# - ZLIB_URL
+# - OPENSSL_VERSION
+
+####################################
+# DEV DEPENDENCIES
+####################################
 
 # Make sure we have basic dev tools for building C libraries.  Our goal here is
 # to support the musl-libc builds and Cargo builds needed for a large selection
 # of the most popular crates.
 #
-# We also set up a `rust` user by default. This user has sudo privileges if you
-# need to install any more software.
+# "rust" user has been removed compared to the original Dockerfile from emk/rust-musl-builder
+# We handle the user issues at the end of the Dockerfile
 RUN apt-get update && \
     export DEBIAN_FRONTEND=noninteractive && \
     apt-get install -yq \
@@ -58,8 +55,17 @@ RUN apt-get update && \
         unzip \
         xutils-dev \
         && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* && \
-    useradd rust --user-group --create-home --shell /bin/bash --groups sudo
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ARG MDBOOK_VERSION=0.4.14
+ARG MDBOOK_GRAPHVIZ_VERSION=0.1.3
+ARG CARGO_ABOUT_VERSION=0.4.4
+ARG CARGO_AUDIT_VERSION=0.16.0
+ARG CARGO_DENY_VERSION=0.11.0
+
+####################################
+# CARGO TOOLS
+####################################
 
 # - `mdbook` is the standard Rust tool for making searchable HTML manuals.
 # - `mdbook-graphviz` allows using inline GraphViz drawing commands to add illustrations.
@@ -87,8 +93,18 @@ RUN curl -fLO https://github.com/rust-lang-nursery/mdBook/releases/download/v$MD
     mv cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl/cargo-deny /usr/local/bin/ && \
     rm -rf cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz
 
+####################################
+# C LIBRARIES
+####################################
+
 # Static linking for C++ code
 RUN ln -s "/usr/bin/g++" "/usr/bin/musl-g++"
+
+# The OpenSSL version to use. Here is the place to check for new releases:
+#
+# - https://www.openssl.org/source/
+#
+ARG OPENSSL_VERSION=1.1.1m
 
 # Build a static library version of OpenSSL using musl-libc.  This is needed by
 # the popular Rust `hyper` crate.
@@ -115,13 +131,23 @@ RUN echo "Building OpenSSL" && \
     rm /usr/local/musl/include/linux /usr/local/musl/include/asm /usr/local/musl/include/asm-generic && \
     rm -r /tmp/*
 
+# Use the latest version of zlib:
+# ARG ZLIB_URL=https://zlib.net/current/zlib.tar.gz
+# Use a hardcoded version:
+ARG ZLIB_URL=https://zlib.net/zlib-1.3.1.tar.gz
+
 RUN echo "Building zlib" && \
     cd /tmp && \
-    curl -fLO "http://zlib.net/zlib-$ZLIB_VERSION.tar.gz" && \
-    tar xzf "zlib-$ZLIB_VERSION.tar.gz" && cd "zlib-$ZLIB_VERSION" && \
+    curl -fLO "${ZLIB_URL}" && \
+    tar xzf zlib*.tar.gz && cd zlib-* && \
     CC=musl-gcc ./configure --static --prefix=/usr/local/musl && \
     make && make install && \
     rm -r /tmp/*
+
+# We're stuck on PostgreSQL 11 until we figure out
+# https://github.com/emk/rust-musl-builder/issues.
+
+ARG POSTGRESQL_VERSION=11.14
 
 RUN echo "Building libpq" && \
     cd /tmp && \
@@ -132,15 +158,14 @@ RUN echo "Building libpq" && \
     cd ../../bin/pg_config && make && make install && \
     rm -r /tmp/*
 
+####################################
+# RUST TOOLCHAIN
+####################################
+
+
 # (Please feel free to submit pull requests for musl-libc builds of other C
 # libraries needed by the most popular and common Rust crates, to avoid
 # everybody needing to build them manually.)
-
-# Install a `git credentials` helper for using GH_USER and GH_TOKEN to access
-# private repositories if desired. We make sure this is configured for root,
-# here, and for the `rust` user below.
-ADD git-credential-ghtoken /usr/local/bin/ghtoken
-RUN git config --global credential.https://github.com.helper ghtoken
 
 # Set up our path with all our binary directories, including those for the
 # musl-gcc toolchain and for our Rust toolchain.
@@ -149,6 +174,14 @@ RUN git config --global credential.https://github.com.helper ghtoken
 # to install the rustup toolchain as root.
 ENV RUSTUP_HOME=/opt/rust/rustup \
     PATH=/home/rust/.cargo/bin:/opt/rust/cargo/bin:/usr/local/musl/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# The Rust toolchain to use when building our image.
+# Use the latest stable version:
+ARG TOOLCHAIN=stable
+# Use a hardcoded stable version:
+# ARG TOOLCHAIN=1.88.0
+# Use a hardcoded nightly version:
+# ARG TOOLCHAIN=nightly-2025-08-04
 
 # Install our Rust toolchain and the `musl` target.  We patch the
 # command-line we pass to the installer so that it won't attempt to
@@ -165,6 +198,15 @@ RUN curl https://sh.rustup.rs -sSf | \
     env CARGO_HOME=/opt/rust/cargo \
         rustup target add x86_64-unknown-linux-musl
 ADD cargo-config.toml /opt/rust/cargo/config
+
+####################################
+# USER-FACING SETUP
+####################################
+
+# Install a `git credentials` helper for using GH_USER and GH_TOKEN to access
+# private repositories if desired.
+ADD git-credential-ghtoken /usr/local/bin/ghtoken
+RUN git config --global credential.https://github.com.helper ghtoken
 
 # Set up our environment variables so that we cross-compile using musl-libc by
 # default.
@@ -185,19 +227,23 @@ ENV X86_64_UNKNOWN_LINUX_MUSL_OPENSSL_DIR=/usr/local/musl/ \
 RUN env CARGO_HOME=/opt/rust/cargo cargo install -f cargo-deb && \
     rm -rf /opt/rust/cargo/registry/
 
-# Allow sudo without a password.
-ADD sudoers /etc/sudoers.d/nopasswd
+# Changed sudoers to pass through the env variables
+# (Used for the run_with_fixed_uid.sh script)
+ADD sudoers /etc/sudoers
 
 # Run all further code as user `rust`, create our working directories, install
 # our config file, and set up our credential helper.
 #
 # You should be able to switch back to `USER root` from another `Dockerfile`
 # using this image if you need to do so.
-USER rust
 RUN mkdir -p /home/rust/libs /home/rust/src /home/rust/.cargo && \
     ln -s /opt/rust/cargo/config /home/rust/.cargo/config && \
     git config --global credential.https://github.com.helper ghtoken
 
-# Expect our source code to live in /home/rust/src.  We'll run the build as
-# user `rust`, which will be uid 1000, gid 1000 outside the container.
-WORKDIR /home/rust/src
+ADD run_with_fixed_uid.sh /usr/local/bin/run_with_fixed_uid
+RUN chmod +x /usr/local/bin/run_with_fixed_uid
+
+# Work in "/workdir" by default
+WORKDIR /workdir
+
+ENTRYPOINT ["/usr/local/bin/run_with_fixed_uid"]
