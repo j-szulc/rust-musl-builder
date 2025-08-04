@@ -52,8 +52,8 @@ fi
 shift 2
 
 # Validate root user consistency
-is_root_user=[[ "$USERNAME" == "root" ]]
-is_root_uid=[[ "$TARGET_UID" == "0" ]]
+[ "$USERNAME" == "root" ] && is_root_user=true || is_root_user=false
+[ "$TARGET_UID" == "0" ] && is_root_uid=true || is_root_uid=false
 
 if $is_root_user && ! $is_root_uid; then
     echo "Error: Username 'root' must have UID 0, but got UID $TARGET_UID" >&2
@@ -84,10 +84,17 @@ usermod -aG sudo "$USERNAME" 2>/dev/null || {
 
 echo "Setting ownership permissions..."
 
-# Change ownership of key directories to the new user
-chown -R "$USERNAME:$USERNAME" /bin /lib /lib64 /opt /root /sbin /var /home 2>/dev/null || {
-    echo "Warning: Some ownership changes may have failed" >&2
+BASE_DEVICE=$(stat -c %d /)
+set_permissions() {
+    for dir in "$@"; do
+        if [ "$(stat -c %d "$dir")" == "$BASE_DEVICE" ]; then
+            find "$dir" -xdev -exec chown "$USERNAME:$USERNAME" {} + 2>/dev/null || {
+                echo "Warning: Ownership changes for $dir may have failed" >&2
+            }
+        fi
+    done
 }
+set_permissions /bin /lib /lib64 /opt /root /sbin /var /home
 
 echo "Running command as user '$USERNAME': $*"
 
