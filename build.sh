@@ -13,4 +13,4 @@ docker buildx build \
     .
 #   -o type=registry for pushing to docker hub
 
-docker run --rm jszulc/rust-musl-builder:$RUST_VERSION sh -c "cargo --version && rustc --version && rustup --version"
+docker run --rm jszulc/rust-musl-builder:$RUST_VERSION sh -c "cargo --version && rustc --version && rustup --version && cargo init && cargo run"

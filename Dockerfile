@@ -1,6 +1,6 @@
 # Based on https://github.com/emk/rust-musl-builder
 
-FROM ubuntu:18.04
+FROM ubuntu:noble
 
 # Versions for other dependencies. Here are the places to check for new
 # releases:
@@ -47,7 +47,7 @@ RUN apt-get update && \
         musl-dev \
         musl-tools \
         libpq-dev \
-        libsqlite-dev \
+        libsqlite3-dev \
         libssl-dev \
         linux-libc-dev \
         pkgconf \
@@ -56,42 +56,6 @@ RUN apt-get update && \
         xutils-dev \
         && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-
-ARG MDBOOK_VERSION=0.4.14
-ARG MDBOOK_GRAPHVIZ_VERSION=0.1.3
-ARG CARGO_ABOUT_VERSION=0.4.4
-ARG CARGO_AUDIT_VERSION=0.16.0
-ARG CARGO_DENY_VERSION=0.11.0
-
-####################################
-# CARGO TOOLS
-####################################
-
-# - `mdbook` is the standard Rust tool for making searchable HTML manuals.
-# - `mdbook-graphviz` allows using inline GraphViz drawing commands to add illustrations.
-# - `cargo-about` generates a giant license file for all dependencies.
-# - `cargo-audit` checks for security vulnerabilities. We include it for backwards compat.
-# - `cargo-deny` does everything `cargo-audit` does, plus check licenses & many other things.
-RUN curl -fLO https://github.com/rust-lang-nursery/mdBook/releases/download/v$MDBOOK_VERSION/mdbook-v$MDBOOK_VERSION-x86_64-unknown-linux-gnu.tar.gz && \
-    tar xf mdbook-v$MDBOOK_VERSION-x86_64-unknown-linux-gnu.tar.gz && \
-    mv mdbook /usr/local/bin/ && \
-    rm -f mdbook-v$MDBOOK_VERSION-x86_64-unknown-linux-gnu.tar.gz && \
-    curl -fLO https://github.com/dylanowen/mdbook-graphviz/releases/download/v$MDBOOK_GRAPHVIZ_VERSION/mdbook-graphviz_v${MDBOOK_GRAPHVIZ_VERSION}_x86_64-unknown-linux-musl.zip && \
-    unzip mdbook-graphviz_v${MDBOOK_GRAPHVIZ_VERSION}_x86_64-unknown-linux-musl.zip && \
-    mv mdbook-graphviz /usr/local/bin/ && \
-    rm -f mdbook-graphviz_v${MDBOOK_GRAPHVIZ_VERSION}_x86_64-unknown-linux-musl.zip && \
-    curl -fLO https://github.com/EmbarkStudios/cargo-about/releases/download/$CARGO_ABOUT_VERSION/cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz && \
-    tar xf cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz && \
-    mv cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl/cargo-about /usr/local/bin/ && \
-    rm -rf cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl && \
-    curl -fLO https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv${CARGO_AUDIT_VERSION}/cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}.tgz && \
-    tar xf cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}.tgz && \
-    cp cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}/cargo-audit /usr/local/bin/ && \
-    rm -rf cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}.tgz cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION} && \
-    curl -fLO https://github.com/EmbarkStudios/cargo-deny/releases/download/$CARGO_DENY_VERSION/cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz && \
-    tar xf cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz && \
-    mv cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl/cargo-deny /usr/local/bin/ && \
-    rm -rf cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz
 
 ####################################
 # C LIBRARIES
@@ -104,7 +68,7 @@ RUN ln -s "/usr/bin/g++" "/usr/bin/musl-g++"
 #
 # - https://www.openssl.org/source/
 #
-ARG OPENSSL_VERSION=1.1.1m
+ARG OPENSSL_VERSION=3.0.13
 
 # Build a static library version of OpenSSL using musl-libc.  This is needed by
 # the popular Rust `hyper` crate.
@@ -121,8 +85,7 @@ RUN echo "Building OpenSSL" && \
     ln -s /usr/include/asm-generic /usr/local/musl/include/asm-generic && \
     cd /tmp && \
     short_version="$(echo "$OPENSSL_VERSION" | sed s'/[a-z]$//' )" && \
-    curl -fLO "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz" || \
-        curl -fLO "https://www.openssl.org/source/old/$short_version/openssl-$OPENSSL_VERSION.tar.gz" && \
+    curl -fLO "https://github.com/openssl/openssl/releases/download/openssl-$OPENSSL_VERSION/openssl-$OPENSSL_VERSION.tar.gz" && \
     tar xvzf "openssl-$OPENSSL_VERSION.tar.gz" && cd "openssl-$OPENSSL_VERSION" && \
     env CC=musl-gcc ./Configure no-shared no-zlib -fPIC --prefix=/usr/local/musl -DOPENSSL_NO_SECURE_MEMORY linux-x86_64 && \
     env C_INCLUDE_PATH=/usr/local/musl/include/ make depend && \
@@ -144,12 +107,11 @@ RUN echo "Building zlib" && \
     make && make install && \
     rm -r /tmp/*
 
-# We're stuck on PostgreSQL 11 until we figure out
-# https://github.com/emk/rust-musl-builder/issues.
 
-ARG POSTGRESQL_VERSION=11.14
+ARG POSTGRESQL_VERSION=17.5
 
-RUN echo "Building libpq" && \
+RUN apt update && apt install --reinstall -y libssl-dev flex bison libicu-dev && apt clean && rm -rf /var/lib/apt/lists/* && ls /usr/local/musl/include && \
+    echo "Building libpq" && \
     cd /tmp && \
     curl -fLO "https://ftp.postgresql.org/pub/source/v$POSTGRESQL_VERSION/postgresql-$POSTGRESQL_VERSION.tar.gz" && \
     tar xzf "postgresql-$POSTGRESQL_VERSION.tar.gz" && cd "postgresql-$POSTGRESQL_VERSION" && \
@@ -157,6 +119,8 @@ RUN echo "Building libpq" && \
     cd src/interfaces/libpq && make all-static-lib && make install-lib-static && \
     cd ../../bin/pg_config && make && make install && \
     rm -r /tmp/*
+
+RUN false
 
 ####################################
 # RUST TOOLCHAIN
@@ -198,6 +162,42 @@ RUN curl https://sh.rustup.rs -sSf | \
     env CARGO_HOME=/opt/rust/cargo \
         rustup target add x86_64-unknown-linux-musl
 ADD cargo-config.toml /opt/rust/cargo/config
+
+####################################
+# CARGO TOOLS
+####################################
+
+ARG MDBOOK_VERSION=0.4.14
+ARG MDBOOK_GRAPHVIZ_VERSION=0.1.3
+ARG CARGO_ABOUT_VERSION=0.4.4
+ARG CARGO_AUDIT_VERSION=0.16.0
+ARG CARGO_DENY_VERSION=0.11.0
+
+# - `mdbook` is the standard Rust tool for making searchable HTML manuals.
+# - `mdbook-graphviz` allows using inline GraphViz drawing commands to add illustrations.
+# - `cargo-about` generates a giant license file for all dependencies.
+# - `cargo-audit` checks for security vulnerabilities. We include it for backwards compat.
+# - `cargo-deny` does everything `cargo-audit` does, plus check licenses & many other things.
+RUN curl -fLO https://github.com/rust-lang-nursery/mdBook/releases/download/v$MDBOOK_VERSION/mdbook-v$MDBOOK_VERSION-x86_64-unknown-linux-gnu.tar.gz && \
+    tar xf mdbook-v$MDBOOK_VERSION-x86_64-unknown-linux-gnu.tar.gz && \
+    mv mdbook /usr/local/bin/ && \
+    rm -f mdbook-v$MDBOOK_VERSION-x86_64-unknown-linux-gnu.tar.gz && \
+    curl -fLO https://github.com/dylanowen/mdbook-graphviz/releases/download/v$MDBOOK_GRAPHVIZ_VERSION/mdbook-graphviz_v${MDBOOK_GRAPHVIZ_VERSION}_x86_64-unknown-linux-musl.zip && \
+    unzip mdbook-graphviz_v${MDBOOK_GRAPHVIZ_VERSION}_x86_64-unknown-linux-musl.zip && \
+    mv mdbook-graphviz /usr/local/bin/ && \
+    rm -f mdbook-graphviz_v${MDBOOK_GRAPHVIZ_VERSION}_x86_64-unknown-linux-musl.zip && \
+    curl -fLO https://github.com/EmbarkStudios/cargo-about/releases/download/$CARGO_ABOUT_VERSION/cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz && \
+    tar xf cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz && \
+    mv cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl/cargo-about /usr/local/bin/ && \
+    rm -rf cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl && \
+    curl -fLO https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv${CARGO_AUDIT_VERSION}/cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}.tgz && \
+    tar xf cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}.tgz && \
+    cp cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}/cargo-audit /usr/local/bin/ && \
+    rm -rf cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION}.tgz cargo-audit-x86_64-unknown-linux-gnu-v${CARGO_AUDIT_VERSION} && \
+    curl -fLO https://github.com/EmbarkStudios/cargo-deny/releases/download/$CARGO_DENY_VERSION/cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz && \
+    tar xf cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz && \
+    mv cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl/cargo-deny /usr/local/bin/ && \
+    rm -rf cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl.tar.gz
 
 ####################################
 # USER-FACING SETUP
