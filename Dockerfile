@@ -54,6 +54,9 @@ RUN apt-get update && \
         sudo \
         unzip \
         xutils-dev \
+        flex \
+        bison \
+        libicu-dev \
         && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
